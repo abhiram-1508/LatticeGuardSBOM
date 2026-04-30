@@ -1,0 +1,36 @@
+FROM node:22-slim
+
+# Enable pnpm 
+RUN corepack enable pnpm
+
+WORKDIR /app
+
+# Copy workspace configuration and tsconfig base to avoid warnings
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json ./
+
+# Copy the frontend folder
+COPY artifacts/latticeguard-sbom ./artifacts/latticeguard-sbom/
+COPY lib ./lib/
+
+# Install the dependencies
+RUN pnpm install --frozen-lockfile
+
+# Fake the PORT for the build step (Vite needs a number but won't use it in static build)
+ENV PORT=8080
+
+# Pull the BASE_PATH from Railway's variables automatically
+ARG BASE_PATH=/
+ENV BASE_PATH=$BASE_PATH
+
+# Pull the API URL from Railway variables so it compiles into the app
+ARG VITE_API_URL
+ENV VITE_API_URL=$VITE_API_URL
+
+# Build the frontend
+RUN pnpm --filter @workspace/latticeguard-sbom run build
+
+# Install a standalone lightweight web server globally
+RUN npm install -g serve
+
+# Railway provides the real $PORT automatically at runtime
+CMD ["sh", "-c", "serve -s artifacts/latticeguard-sbom/dist/public -l tcp://0.0.0.0:${PORT:-8080}"]
